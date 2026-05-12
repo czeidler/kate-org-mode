@@ -35,28 +35,6 @@ function tomorrow() {
   return formatDateOrgMode(new Date(Date.now() + 1000 * 60 * 60 * 24));
 }
 
-// The line contains the snipped code, e.g. "** [2024-04-12 ${updateDate()}]"
-//                                                                         ^ cursorPosition
-// This method removes the ${...} part.
-function removeCommand(line: string, cursorPosition: number) {
-  const start = line.lastIndexOf("${", cursorPosition);
-  if (start >= 0) {
-    return line.slice(0, start) + line.slice(cursorPosition);
-  }
-  return line;
-}
-function removeCommand2(
-  line: string,
-  cursorPosition: number,
-): [string, number] {
-  const start1 = line.lastIndexOf("${", cursorPosition);
-  const start = line.lastIndexOf("${", start1 - 1);
-  if (start >= 0) {
-    return [line.slice(0, start) + line.slice(cursorPosition), start];
-  }
-  return [line, cursorPosition];
-}
-
 function updateDateAt(
   lineText: string,
   column: number,
@@ -68,11 +46,7 @@ function updateDateAt(
     return "";
   }
 
-  const rawBracketText = lineText.slice(startBracketIndex + 1, endBracketIndex);
-  const bracketText = removeCommand(
-    rawBracketText,
-    column - startBracketIndex - 1,
-  );
+  const bracketText = lineText.slice(startBracketIndex + 1, endBracketIndex);
   const dateText = bracketText.trim().split(" ")[0].slice(0, 10);
   let date = new Date(Date.parse(dateText));
   if (date === null) {
@@ -146,8 +120,7 @@ function toggleTable(
     nextLines.push(l);
   }
   const tableLines = [...prevLines.reverse(), lineText, ...nextLines];
-  // const tableRaw: string[][]
-  const tableRaw = tableLines.map((it) => it.split("|"));
+  const tableRaw: string[][] = tableLines.map((it) => it.split("|"));
   const tableStartLine = line - prevLines.length;
   // table index of the trigger line
   const tableLineIndex = prevLines.length;
@@ -165,24 +138,29 @@ function toggleTable(
     }
   }
 
-  // const table: { cells: string[], isSeparator: boolean }[]
-  const table = tableRaw.map((line) => {
-    return {
-      isSeparator: line[1] ? line[1].startsWith("-") : false,
-      cells: line.slice(1, -1).map((it) => it.trim()),
-    };
-  });
+  const table: { cells: string[]; isSeparator: boolean }[] = tableRaw.map(
+    (line) => {
+      const cells = line.slice(1, -1).map((it) => it.trim());
+      const endCell = line[line.length - 1].trim();
+      if (endCell.length > 0) {
+        cells.push(endCell);
+      }
+      return {
+        isSeparator: line[1] ? line[1].startsWith("-") : false,
+        cells,
+      };
+    },
+  );
   const columnSize: number[] = [];
-  for (let i = 0; i < table.length; i++) {
-    const row = table[i];
-    for (let i = 0; i < row.cells.length; i++) {
-      const c = row.cells[i];
+  for (const row of table) {
+    for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
+      const c = row.cells[cellIndex];
       const length = row.isSeparator ? 1 : c.length;
-      const existing = columnSize[i];
+      const existing = columnSize[cellIndex];
       if (existing === undefined) {
         columnSize.push(length);
       } else {
-        columnSize[i] = existing < length ? length : existing;
+        columnSize[cellIndex] = existing < length ? length : existing;
       }
     }
   }
@@ -241,7 +219,6 @@ function toggleTable(
   }
 
   const formattedTableRows = table.map((row) => {
-    let rowLine = `${padding}|`;
     const outColumns = [];
     for (let i = 0; i < columnSize.length; i++) {
       if (row.isSeparator) {
@@ -264,9 +241,8 @@ function toggleTable(
 
 function toggleNextPrev(next: "next" | "prev") {
   const cursor = view.cursorPosition();
-  const cleanedLine = removeCommand2(document.line(cursor.line), cursor.column);
-  const lineText = cleanedLine[0];
-  const column = cleanedLine[1];
+  const lineText = document.line(cursor.line);
+  const column = cursor.column;
 
   // date
   const startBracketIndex = lineText.lastIndexOf("[", column);
