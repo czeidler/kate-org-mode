@@ -207,8 +207,9 @@ function toggleTable(
   } else if (nextCursorCell < 0) {
     cursorToPrevRow();
   }
-  const padding = /^\s*/.exec(tableLines[0]) ?? "";
-  let cursorColumn = padding.length + 1;
+  const paddingExecArray = /^\s*/.exec(tableLines[0]);
+  const padding = paddingExecArray !== null ? paddingExecArray[0] : "";
+  let cursorColumn = padding.length + 2;
   for (let i = 0; i < nextCursorCell; i++) {
     cursorColumn += columnSize[i] + 3;
   }
