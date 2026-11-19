@@ -65,6 +65,7 @@ function updateDateAt(
 
 const todoOptions = ["TODO", "DONE"];
 const fullOptions = [...todoOptions, ""];
+const tagEndColumn = 77;
 
 function toggleTodo(
   lineText: string,
@@ -88,7 +89,27 @@ function toggleTodo(
     nextIdx = 0;
   }
   const nextOption = fullOptions[nextIdx];
-  const newTodoLine = `${prefix[0].trim()}${nextOption === "" ? " " : ` ${nextOption} `}${lineText.slice(prefix[0].length + existingOption.length).trim()}`;
+  const headerStart = `${prefix[0].trim()}${nextOption === "" ? " " : ` ${nextOption} `}`;
+
+  // E.g "** TODO {...}"
+  const headerTextRaw = lineText
+    .slice(prefix[0].length + existingOption.length)
+    .trim();
+  const tagMatch = headerTextRaw.match(/\s+(:([a-zA-Z0-9_@#%]+:)+)\s*$/);
+  const text = tagMatch
+    ? headerTextRaw.slice(0, tagMatch.index)
+    : headerTextRaw;
+  const tags = tagMatch ? tagMatch[1].trim() : undefined;
+  const tagSpacing =
+    tagEndColumn - headerStart.length - text.length - (tags?.length ?? 0);
+  const tagSpacingText = !tags
+    ? ""
+    : tagSpacing <= 1
+      ? ""
+      : " ".repeat(tagSpacing);
+
+  const newTodoLine = `${headerStart}${text}${tagSpacingText}${tags ?? ""}`;
+
   const columnDiff =
     column <= prefix[0].length + existingOption.length
       ? 0
