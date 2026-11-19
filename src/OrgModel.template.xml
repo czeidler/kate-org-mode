@@ -1,0 +1,21 @@
+<snippets authors="Clemens" filetypes="Org Mode" license="BSD" name="Org mode" namespace="">
+<script>
+{{SCRIPT}}
+</script>
+ <item>
+  <match>Today</match>
+  <fillin type="template">[${today()}]</fillin>
+ </item>
+ <item>
+  <match>Tomorrow</match>
+  <fillin type="template">[${tomorrow()}]</fillin>
+ </item>
+ <item>
+  <match>ZZ_ToggleNext</match>
+  <fillin type="script">toggleNextPrev('next')</fillin>
+ </item>
+ <item>
+  <match>ZZ_TogglePrev</match>
+  <fillin type="script">toggleNextPrev('prev')</fillin>
+ </item>
+</snippets>

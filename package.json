@@ -4,11 +4,14 @@
   "description": "",
   "main": "src/org-mode.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc && tsx ./src/scripts/build-output-xml.ts",
+    "install": "pnpm run build && tsx ./src/scripts/install.ts"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "typescript": "6.0.3"
+    "@types/node": "26.6.6",
+    "typescript": "6.0.3",
+    "tsx": "4.23.15"
   }
 }

@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "lib": ["es2021"],
+    "types": ["node"],
     "rootDir": "src",
     "outDir": "out",
     "strict": true /* Enable all strict type-checking options. */,

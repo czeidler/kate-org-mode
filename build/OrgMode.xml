@@ -1,0 +1,270 @@
+<snippets authors="Clemens" filetypes="Org Mode" license="BSD" name="Org mode" namespace="">
+<script>
+"use strict";
+function formatDateOrgMode(date) {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const dow = days[date.getDay()];
+    return `${date.getFullYear()}-${month}-${day} ${dow}`;
+}
+function today() {
+    return formatDateOrgMode(new Date());
+}
+function tomorrow() {
+    return formatDateOrgMode(new Date(Date.now() + 1000 * 60 * 60 * 24));
+}
+function updateDateAt(lineText, column, addDays) {
+    const startBracketIndex = lineText.lastIndexOf("[", column);
+    const endBracketIndex = lineText.indexOf("]", column);
+    if (startBracketIndex &lt; 0 || endBracketIndex &lt; 0) {
+        return "";
+    }
+    const bracketText = lineText.slice(startBracketIndex + 1, endBracketIndex);
+    const dateText = bracketText.trim().split(" ")[0].slice(0, 10);
+    let date = new Date(Date.parse(dateText));
+    if (date === null) {
+        return "";
+    }
+    if (addDays !== undefined) {
+        date.setDate(date.getDate() + addDays);
+    }
+    return (lineText.slice(0, startBracketIndex + 1) +
+        formatDateOrgMode(date) +
+        lineText.slice(endBracketIndex));
+}
+const todoOptions = ["TODO", "DONE"];
+const fullOptions = [...todoOptions, ""];
+const tagEndColumn = 77;
+function toggleTodo(lineText, next, line, column) {
+    const prefix = /^\*+\s+/.exec(lineText);
+    if (!prefix) {
+        return ["", { line, column }];
+    }
+    const existingOptionIdx = fullOptions.findIndex((it) =&gt; lineText.startsWith(it, prefix[0].length));
+    const existingOption = fullOptions[existingOptionIdx] ?? "";
+    let nextIdx = next === "next" ? existingOptionIdx + 1 : existingOptionIdx - 1;
+    if (nextIdx &lt; 0) {
+        nextIdx = fullOptions.length - 1;
+    }
+    else if (nextIdx &gt;= fullOptions.length) {
+        nextIdx = 0;
+    }
+    const nextOption = fullOptions[nextIdx];
+    const headerStart = `${prefix[0].trim()}${nextOption === "" ? " " : ` ${nextOption} `}`;
+    // E.g "** TODO {...}"
+    const headerTextRaw = lineText
+        .slice(prefix[0].length + existingOption.length)
+        .trim();
+    const tagMatch = headerTextRaw.match(/\s+(:([a-zA-Z0-9_@#%]+:)+)\s*$/);
+    const text = tagMatch
+        ? headerTextRaw.slice(0, tagMatch.index)
+        : headerTextRaw;
+    const tags = tagMatch ? tagMatch[1].trim() : undefined;
+    const tagSpacing = tagEndColumn - headerStart.length - text.length - (tags?.length ?? 0);
+    const tagSpacingText = !tags
+        ? ""
+        : tagSpacing &lt;= 1
+            ? ""
+            : " ".repeat(tagSpacing);
+    const newTodoLine = `${headerStart}${text}${tagSpacingText}${tags ?? ""}`;
+    const columnDiff = column &lt;= prefix[0].length + existingOption.length
+        ? 0
+        : newTodoLine.length - lineText.length;
+    return [newTodoLine, { line, column: column + columnDiff }];
+}
+function toggleTable(lineText, line, column, next) {
+    const testRegEx = /^\s*\|/;
+    const prevLines = [];
+    for (let i = line - 1; i &gt;= 0; i--) {
+        const l = document.line(i);
+        if (!l || testRegEx.exec(l) === null) {
+            break;
+        }
+        prevLines.push(l);
+    }
+    const nextLines = [];
+    for (let i = line + 1; i &lt; document.lines(); i++) {
+        const l = document.line(i);
+        if (testRegEx.exec(l) === null) {
+            break;
+        }
+        nextLines.push(l);
+    }
+    const tableLines = [...prevLines.reverse(), lineText, ...nextLines];
+    const tableRaw = tableLines.map((it) =&gt; it.split("|"));
+    const tableStartLine = line - prevLines.length;
+    // table index of the trigger line
+    const tableLineIndex = prevLines.length;
+    // get cursor cell
+    const cursorRow = tableRaw[tableLineIndex];
+    let cursorRowPos = 0;
+    // in the raw line the first cell is before the table
+    let cursorRowCell = -2;
+    for (const cursorCell of cursorRow) {
+        cursorRowCell += 1;
+        cursorRowPos += cursorCell.length + 1;
+        if (cursorRowPos &gt; column) {
+            break;
+        }
+    }
+    const table = tableRaw.map((line) =&gt; {
+        const cells = line.slice(1, -1).map((it) =&gt; it.trim());
+        const endCell = line[line.length - 1].trim();
+        if (endCell.length &gt; 0) {
+            cells.push(endCell);
+        }
+        return {
+            isSeparator: line[1] ? line[1].startsWith("-") : false,
+            cells,
+        };
+    });
+    const columnSize = [];
+    for (const row of table) {
+        for (let cellIndex = 0; cellIndex &lt; row.cells.length; cellIndex++) {
+            const c = row.cells[cellIndex];
+            const length = row.isSeparator ? 1 : c.length;
+            const existing = columnSize[cellIndex];
+            if (existing === undefined) {
+                columnSize.push(length);
+            }
+            else {
+                columnSize[cellIndex] = existing &lt; length ? length : existing;
+            }
+        }
+    }
+    // calculate new cursor position
+    let cursorLine = line;
+    let nextCursorCell = next === "next" ? cursorRowCell + 1 : cursorRowCell - 1;
+    const cursorToNextRow = () =&gt; {
+        nextCursorCell = 0;
+        if (tableLineIndex + 1 &lt; table.length) {
+            for (let i = tableLineIndex + 1; i &lt; table.length; i++) {
+                const row = table[i];
+                if (row.isSeparator === false) {
+                    cursorLine = tableStartLine + i;
+                    break;
+                }
+            }
+        }
+        else {
+            cursorLine = tableStartLine + table.length;
+        }
+    };
+    const cursorToPrevRow = () =&gt; {
+        if (tableLineIndex &gt; 0) {
+            for (let i = tableLineIndex - 1; i &gt;= 0; i--) {
+                const row = table[i];
+                if (row.isSeparator === false) {
+                    nextCursorCell = columnSize.length - 1;
+                    cursorLine = tableStartLine + i;
+                    break;
+                }
+            }
+        }
+        else {
+            nextCursorCell = 0;
+        }
+    };
+    if (table[tableLineIndex].isSeparator) {
+        if (next === "next") {
+            cursorToNextRow();
+        }
+        else {
+            cursorToPrevRow();
+        }
+    }
+    else if (nextCursorCell &gt;= columnSize.length) {
+        cursorToNextRow();
+    }
+    else if (nextCursorCell &lt; 0) {
+        cursorToPrevRow();
+    }
+    const paddingExecArray = /^\s*/.exec(tableLines[0]);
+    const padding = paddingExecArray !== null ? paddingExecArray[0] : "";
+    let cursorColumn = padding.length + 2;
+    for (let i = 0; i &lt; nextCursorCell; i++) {
+        cursorColumn += columnSize[i] + 3;
+    }
+    // add new table row if we reached the bottom
+    if (cursorLine &gt;= tableStartLine + table.length) {
+        table.push({ isSeparator: false, cells: [] });
+    }
+    const formattedTableRows = table.map((row) =&gt; {
+        const outColumns = [];
+        for (let i = 0; i &lt; columnSize.length; i++) {
+            if (row.isSeparator) {
+                outColumns.push(`${"-".padEnd(columnSize[i] + 2, "-")}`);
+            }
+            else {
+                outColumns.push(` ${(row.cells[i] ?? "").padEnd(columnSize[i])} `);
+            }
+        }
+        return `${padding}|${row.isSeparator ? outColumns.join("+") : outColumns.join("|")}|`;
+    });
+    const originalTableHeight = tableLines.length;
+    return [
+        formattedTableRows,
+        tableStartLine,
+        originalTableHeight,
+        { line: cursorLine, column: cursorColumn },
+    ];
+}
+function toggleNextPrev(next) {
+    const cursor = view.cursorPosition();
+    const lineText = document.line(cursor.line);
+    const column = cursor.column;
+    // date
+    const startBracketIndex = lineText.lastIndexOf("[", column);
+    const endBracketIndex = lineText.indexOf("]", column);
+    if (startBracketIndex &gt;= 0 &amp;&amp; endBracketIndex &gt;= 0) {
+        const dateLine = updateDateAt(lineText, column, next === "next" ? 1 : -1);
+        const columnDiff = dateLine.length - lineText.length;
+        document.removeText(new Range(cursor.line, 0, cursor.line, 999999));
+        document.insertText(cursor.line, 0, dateLine);
+        view.setCursorPosition(cursor.line, column + columnDiff);
+        return "";
+    }
+    // todo
+    if (lineText.startsWith("*")) {
+        const todoResult = toggleTodo(lineText, next, cursor.line, column);
+        const todoLine = todoResult[0];
+        const newCursor = todoResult[1];
+        document.removeText(new Range(cursor.line, 0, cursor.line, 999999));
+        document.insertText(cursor.line, 0, todoLine);
+        view.setCursorPosition(newCursor.line, newCursor.column);
+        return "";
+    }
+    // table
+    if (/^\s*\|/.exec(lineText) !== null) {
+        const tableResult = toggleTable(lineText, cursor.line, column, next);
+        const tableLines = tableResult[0];
+        const tableStartLine = tableResult[1];
+        const originalTableHeight = tableResult[2];
+        const newCursor = tableResult[3];
+        document.removeText(new Range(tableStartLine, 0, tableStartLine + originalTableHeight - 1, 999999));
+        document.insertText(tableStartLine, 0, tableLines.join("\n"));
+        view.setCursorPosition(newCursor.line, newCursor.column);
+        return "";
+    }
+    return "";
+}
+
+</script>
+ <item>
+  <match>Today</match>
+  <fillin type="template">[${today()}]</fillin>
+ </item>
+ <item>
+  <match>Tomorrow</match>
+  <fillin type="template">[${tomorrow()}]</fillin>
+ </item>
+ <item>
+  <match>ZZ_ToggleNext</match>
+  <fillin type="script">toggleNextPrev('next')</fillin>
+ </item>
+ <item>
+  <match>ZZ_TogglePrev</match>
+  <fillin type="script">toggleNextPrev('prev')</fillin>
+ </item>
+</snippets>
